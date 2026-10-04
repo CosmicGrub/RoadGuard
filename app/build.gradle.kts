@@ -1,8 +1,18 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use(::load)
+}
+val hereApiKey = providers.environmentVariable("HERE_API_KEY").orNull
+    ?: localProperties.getProperty("HERE_API_KEY")
+    ?: ""
 
 android {
     namespace = "com.cosmicgrub.roadguard"
@@ -15,6 +25,7 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "HERE_API_KEY", "\"${hereApiKey.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
     }
 
     compileOptions {
@@ -23,7 +34,10 @@ android {
     }
 
     kotlinOptions { jvmTarget = "17" }
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 }
 
 dependencies {

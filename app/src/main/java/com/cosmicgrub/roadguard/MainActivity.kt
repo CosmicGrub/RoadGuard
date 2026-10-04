@@ -8,14 +8,17 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.cosmicgrub.roadguard.data.RoadGuardProviderFactory
 import com.cosmicgrub.roadguard.location.LocationAccess
 import com.cosmicgrub.roadguard.location.LocationPermissionGate
 import com.cosmicgrub.roadguard.location.locationAccess
+import com.cosmicgrub.roadguard.navigation.NavigationRuntime
 import com.cosmicgrub.roadguard.navigation.NavigationScreen
-import com.cosmicgrub.roadguard.navigation.NavigationUiState
+import com.cosmicgrub.roadguard.navigation.NavigationViewModel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -33,6 +36,11 @@ private fun RoadGuardHome() {
     var navigationMode by remember { mutableStateOf(false) }
     val context = LocalContext.current
     var locationAccess by remember { mutableStateOf(context.locationAccess()) }
+    val provider = remember { RoadGuardProviderFactory.here(BuildConfig.HERE_API_KEY) }
+    val navViewModel: NavigationViewModel? = remember(provider) {
+        provider?.let { NavigationViewModel(NavigationRuntime(it).controller) }
+    }
+    val navState = navViewModel?.state?.collectAsState()?.value
 
     val locationRequest = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -41,11 +49,16 @@ private fun RoadGuardHome() {
     Scaffold(topBar = { TopAppBar(title = { Text("RoadGuard") }) }) { padding ->
         Box(Modifier.padding(padding)) {
             if (navigationMode) {
-                NavigationScreen(
-                    state = NavigationUiState(),
-                    onQueryChange = {},
-                    onDestination = {},
-                    onRouteSelected = {},
+                if (navViewModel == null || navState == null) {
+                    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("Live navigation provider is not configured.")
+                        Text("Set HERE_API_KEY in local.properties or the build environment.")
+                    }
+                } else NavigationScreen(
+                    state = navState,
+                    onQueryChange = navViewModel::queryChanged,
+                    onDestination = navViewModel::chooseDestination,
+                    onRouteSelected = navViewModel::selectRoute,
                     mapContent = {
                         Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text("Live map")
