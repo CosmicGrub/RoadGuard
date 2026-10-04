@@ -8,8 +8,8 @@ class NavigationRuntime(
     policy: RoutePolicy = RoutePolicy()
 ) {
     val controller = NavigationController(
-        placeSearch = provider,
-        routeProvider = provider,
+        places = provider,
+        routing = provider,
         policy = policy
     )
 }
