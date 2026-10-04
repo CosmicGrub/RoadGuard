@@ -1,35 +1,82 @@
 package com.cosmicgrub.roadguard.map
 
 import android.content.Context
+import android.graphics.Color
 import android.view.View
 import android.widget.FrameLayout
-import android.widget.TextView
-import java.util.Locale
+import com.cosmicgrub.roadguard.data.GeoPoint
+import org.maplibre.android.camera.CameraUpdateFactory
+import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.geometry.LatLngBounds
+import org.maplibre.android.maps.MapView
+import org.maplibre.android.maps.Style
+import org.maplibre.android.style.layers.LineLayer
+import org.maplibre.android.style.layers.PropertyFactory.lineColor
+import org.maplibre.android.style.layers.PropertyFactory.lineWidth
+import org.maplibre.android.style.sources.GeoJsonSource
 
-/**
- * Stable app-facing map host. SDK-specific map types stay out of navigation/domain code.
- */
-class MapLibreMapView(context: Context) : FrameLayout(context), MapRenderer {
-    private val status = TextView(context).apply {
-        text = "Map initializing"
-        textSize = 16f
-        setPadding(24, 24, 24, 24)
+class MapLibreMapView(
+    context: Context,
+    private val config: MapLibreConfig
+) : FrameLayout(context), MapRenderer {
+    private val mapView = MapView(context)
+    private var latest = MapUiModel()
+
+    init {
+        addView(mapView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        mapView.getMapAsync { map ->
+            map.setStyle(Style.Builder().fromUri(config.styleUri)) { style ->
+                ensureRouteLayers(style)
+                render(latest)
+            }
+        }
     }
 
-    init { addView(status, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)) }
-
     override fun render(model: MapUiModel) {
-        status.text = buildString {
-            append("RoadGuard map")
-            model.userLocation?.let {
-                append("\nGPS: ")
-                append(String.format(Locale.US, "%.5f", it.latitude))
-                append(", ")
-                append(String.format(Locale.US, "%.5f", it.longitude))
-            }
-            if (model.routes.isNotEmpty()) append("\nRoutes: ").append(model.routes.size)
+        latest = model
+        mapView.getMapAsync { map ->
+            val style = map.style ?: return@getMapAsync
+            ensureRouteLayers(style)
+            val lines = RouteGeometry.lines(model.routes, model.selectedRouteId)
+            style.getSourceAs<GeoJsonSource>(ROUTES_SOURCE)?.setGeoJson(RouteGeoJson.collection(lines))
+
+            val selected = model.routes.firstOrNull { it.candidate.id == model.selectedRouteId }
+            val points = selected?.geometry.orEmpty()
+            MapCameraBounds.forPoints(points)?.let { bounds ->
+                map.easeCamera(CameraUpdateFactory.newLatLngBounds(
+                    LatLngBounds.Builder()
+                        .include(LatLng(bounds.southWest.latitude, bounds.southWest.longitude))
+                        .include(LatLng(bounds.northEast.latitude, bounds.northEast.longitude))
+                        .build(),
+                    96
+                ))
+            } ?: model.userLocation?.let { map.animateCamera(
+                CameraUpdateFactory.newLatLngZoom(LatLng(it.latitude, it.longitude), 15.0)
+            ) }
         }
     }
 
     fun nativeView(): View = this
+
+    private fun ensureRouteLayers(style: Style) {
+        if (style.getSource(ROUTES_SOURCE) == null) style.addSource(GeoJsonSource(ROUTES_SOURCE))
+        if (style.getLayer(ROUTES_LAYER) == null) {
+            style.addLayer(LineLayer(ROUTES_LAYER, ROUTES_SOURCE).withProperties(
+                lineColor(Color.rgb(30, 100, 230)),
+                lineWidth(6f)
+            ))
+        }
+    }
+
+    fun onStart() = mapView.onStart()
+    fun onResume() = mapView.onResume()
+    fun onPause() = mapView.onPause()
+    fun onStop() = mapView.onStop()
+    fun onLowMemory() = mapView.onLowMemory()
+    fun onDestroy() = mapView.onDestroy()
+
+    companion object {
+        private const val ROUTES_SOURCE = "roadguard-routes"
+        private const val ROUTES_LAYER = "roadguard-route-lines"
+    }
 }
