@@ -10,6 +10,10 @@ import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
+import org.maplibre.android.location.LocationComponentActivationOptions
+import org.maplibre.android.location.modes.RenderMode
+import com.cosmicgrub.roadguard.location.DriverLocation
+import com.cosmicgrub.roadguard.location.MapLocation
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.PropertyFactory.lineColor
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
@@ -53,6 +57,24 @@ class MapLibreMapView(
             } ?: model.userLocation?.let { map.animateCamera(
                 CameraUpdateFactory.newLatLngZoom(LatLng(it.latitude, it.longitude), 15.0)
             ) }
+        }
+    }
+
+    fun showDriverLocation(location: DriverLocation) {
+        mapView.getMapAsync { map ->
+            val style = map.style ?: return@getMapAsync
+            val component = map.locationComponent
+            if (!component.isLocationComponentActivated) {
+                component.activateLocationComponent(
+                    LocationComponentActivationOptions.builder(context, style)
+                        .useDefaultLocationEngine(false)
+                        .useSpecializedLocationLayer(true)
+                        .build()
+                )
+                component.isLocationComponentEnabled = true
+                component.renderMode = RenderMode.COMPASS
+            }
+            component.forceLocationUpdate(MapLocation.android(location))
         }
     }
 
