@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.cosmicgrub.roadguard.location.LocationAccess
 import com.cosmicgrub.roadguard.location.LocationPermissionGate
@@ -30,7 +31,8 @@ private fun RoadGuardHome() {
     var weather by remember { mutableStateOf(true) }
     var construction by remember { mutableStateOf(true) }
     var navigationMode by remember { mutableStateOf(false) }
-    var locationAccess by remember { mutableStateOf(this@MainActivity.locationAccess()) }
+    val context = LocalContext.current
+    var locationAccess by remember { mutableStateOf(context.locationAccess()) }
 
     val locationRequest = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
