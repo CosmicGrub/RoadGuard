@@ -2,14 +2,19 @@ package com.cosmicgrub.roadguard
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.cosmicgrub.roadguard.navigation.NavigationUiState
+import com.cosmicgrub.roadguard.location.LocationAccess
+import com.cosmicgrub.roadguard.location.LocationPermissionGate
+import com.cosmicgrub.roadguard.location.locationAccess
 import com.cosmicgrub.roadguard.navigation.NavigationScreen
+import com.cosmicgrub.roadguard.navigation.NavigationUiState
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -25,6 +30,11 @@ private fun RoadGuardHome() {
     var weather by remember { mutableStateOf(true) }
     var construction by remember { mutableStateOf(true) }
     var navigationMode by remember { mutableStateOf(false) }
+    var locationAccess by remember { mutableStateOf(this@MainActivity.locationAccess()) }
+
+    val locationRequest = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants -> locationAccess = LocationPermissionGate.access(grants) }
 
     Scaffold(topBar = { TopAppBar(title = { Text("RoadGuard") }) }) { padding ->
         Box(Modifier.padding(padding)) {
@@ -35,8 +45,15 @@ private fun RoadGuardHome() {
                     onDestination = {},
                     onRouteSelected = {},
                     mapContent = {
-                        Box(Modifier.fillMaxSize().padding(20.dp)) {
-                            Text("Map surface ready — provider wiring in progress")
+                        Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("Live map")
+                            when (locationAccess) {
+                                LocationAccess.NONE -> Button(onClick = {
+                                    locationRequest.launch(LocationPermissionGate.foregroundPermissions)
+                                }) { Text("Enable current location") }
+                                LocationAccess.APPROXIMATE -> Text("Approximate location enabled")
+                                LocationAccess.PRECISE -> Text("Precise location enabled")
+                            }
                         }
                     }
                 )
