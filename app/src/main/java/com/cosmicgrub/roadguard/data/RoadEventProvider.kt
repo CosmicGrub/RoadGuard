@@ -2,7 +2,7 @@ package com.cosmicgrub.roadguard.data
 
 import com.cosmicgrub.roadguard.domain.RoadEvent
 
-interface RoadEventProvider {
+interface BoundedRoadEventProvider {
     suspend fun events(bounds: GeoBounds): List<RoadEvent>
 }
 
