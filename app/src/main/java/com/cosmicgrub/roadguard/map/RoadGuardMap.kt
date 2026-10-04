@@ -43,7 +43,7 @@ fun RoadGuardMap(
         factory = { map },
         modifier = modifier,
         update = {
-            it.render(MapUiModel(state.routes, state.selectedRouteId, driverLocation?.point))
+            it.render(MapUiModel(userLocation = driverLocation?.point, routes = state.routes, selectedRouteId = state.selectedRouteId))
             driverLocation?.let(it::showDriverLocation)
         }
     )
