@@ -16,6 +16,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun RoadGuardHome() {
     var zeroTolls by remember { mutableStateOf(true) }
