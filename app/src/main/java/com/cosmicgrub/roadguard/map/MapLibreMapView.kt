@@ -17,6 +17,10 @@ import com.cosmicgrub.roadguard.location.MapLocation
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.PropertyFactory.lineColor
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
+import org.maplibre.android.style.expressions.Expression.get
+import org.maplibre.android.style.expressions.Expression.eq
+import org.maplibre.android.style.expressions.Expression.literal
+import org.maplibre.android.style.expressions.Expression.switchCase
 import org.maplibre.android.style.sources.GeoJsonSource
 
 class MapLibreMapView(
@@ -84,8 +88,8 @@ class MapLibreMapView(
         if (style.getSource(ROUTES_SOURCE) == null) style.addSource(GeoJsonSource(ROUTES_SOURCE))
         if (style.getLayer(ROUTES_LAYER) == null) {
             style.addLayer(LineLayer(ROUTES_LAYER, ROUTES_SOURCE).withProperties(
-                lineColor(Color.rgb(30, 100, 230)),
-                lineWidth(6f)
+                lineColor(switchCase(eq(get("selected"), literal(true)), literal(Color.rgb(30, 100, 230)), literal(Color.rgb(120, 120, 120)))),
+                lineWidth(switchCase(eq(get("selected"), literal(true)), literal(7f), literal(4f)))
             ))
         }
     }

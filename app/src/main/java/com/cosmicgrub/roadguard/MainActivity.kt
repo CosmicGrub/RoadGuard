@@ -16,6 +16,8 @@ import com.cosmicgrub.roadguard.data.RoadGuardProviderFactory
 import com.cosmicgrub.roadguard.location.LocationAccess
 import com.cosmicgrub.roadguard.location.LocationPermissionGate
 import com.cosmicgrub.roadguard.location.locationAccess
+import com.cosmicgrub.roadguard.location.rememberDriverLocation
+import com.cosmicgrub.roadguard.map.RoadGuardMap
 import com.cosmicgrub.roadguard.navigation.NavigationRuntime
 import com.cosmicgrub.roadguard.navigation.NavigationScreen
 import com.cosmicgrub.roadguard.navigation.NavigationViewModel
@@ -41,6 +43,10 @@ private fun RoadGuardHome() {
         provider?.let { NavigationViewModel(NavigationRuntime(it).controller) }
     }
     val navState = navViewModel?.state?.collectAsState()?.value
+    val driverLocation = rememberDriverLocation(locationAccess != LocationAccess.NONE)
+    LaunchedEffect(driverLocation, navViewModel) {
+        driverLocation?.point?.let { navViewModel?.setOrigin(it) }
+    }
 
     val locationRequest = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -60,14 +66,17 @@ private fun RoadGuardHome() {
                     onDestination = navViewModel::chooseDestination,
                     onRouteSelected = navViewModel::selectRoute,
                     mapContent = {
-                        Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("Live map")
-                            when (locationAccess) {
-                                LocationAccess.NONE -> Button(onClick = {
-                                    locationRequest.launch(LocationPermissionGate.foregroundPermissions)
-                                }) { Text("Enable current location") }
-                                LocationAccess.APPROXIMATE -> Text("Approximate location enabled")
-                                LocationAccess.PRECISE -> Text("Precise location enabled")
+                        Box(Modifier.fillMaxSize()) {
+                            RoadGuardMap(
+                                state = navState,
+                                driverLocation = driverLocation,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            if (locationAccess == LocationAccess.NONE) {
+                                Button(
+                                    onClick = { locationRequest.launch(LocationPermissionGate.foregroundPermissions) },
+                                    modifier = Modifier.padding(20.dp)
+                                ) { Text("Enable current location") }
                             }
                         }
                     }
