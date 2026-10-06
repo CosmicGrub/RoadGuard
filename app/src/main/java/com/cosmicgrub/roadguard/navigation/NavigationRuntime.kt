@@ -3,25 +3,21 @@ package com.cosmicgrub.roadguard.navigation
 import com.cosmicgrub.roadguard.data.ExternalNavigationAdapter
 import com.cosmicgrub.roadguard.data.IndependentTollRouteProvider
 import com.cosmicgrub.roadguard.data.NavigationRouteProvider
-import com.cosmicgrub.roadguard.data.TollGuruConfig
-import com.cosmicgrub.roadguard.data.TollGuruEvidence
-import com.cosmicgrub.roadguard.data.TollGuruHttpUrlClient
+import com.cosmicgrub.roadguard.data.RoadGuardBackendTollEvidence
+import com.cosmicgrub.roadguard.data.RoadGuardTollVerifierConfig
 import com.cosmicgrub.roadguard.domain.RoutePolicy
 
 class NavigationRuntime(
     provider: ExternalNavigationAdapter,
-    tollGuruApiKey: String? = null,
+    tollVerificationEndpoint: String? = null,
     policy: RoutePolicy = RoutePolicy()
 ) {
     private val routing: NavigationRouteProvider =
-        if (tollGuruApiKey.isNullOrBlank()) {
-            provider
-        } else {
-            IndependentTollRouteProvider(
-                provider,
-                TollGuruEvidence(TollGuruConfig(tollGuruApiKey), TollGuruHttpUrlClient())
-            )
-        }
+        if (tollVerificationEndpoint.isNullOrBlank()) provider
+        else IndependentTollRouteProvider(
+            provider,
+            RoadGuardBackendTollEvidence(RoadGuardTollVerifierConfig(tollVerificationEndpoint))
+        )
 
     val controller = NavigationController(
         places = provider,
