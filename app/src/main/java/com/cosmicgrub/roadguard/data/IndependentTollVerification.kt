@@ -1,6 +1,10 @@
 package com.cosmicgrub.roadguard.data
 
+import com.cosmicgrub.roadguard.domain.FirewallCheck
+import com.cosmicgrub.roadguard.domain.FirewallStatus
+import com.cosmicgrub.roadguard.domain.RoutePolicy
 import com.cosmicgrub.roadguard.navigation.RouteOption
+import kotlinx.coroutines.CancellationException
 
 /** Evidence must be independent of the route-generating provider. */
 interface IndependentTollEvidence {
@@ -14,18 +18,33 @@ class IndependentTollRouteProvider(
     override suspend fun routes(
         origin: GeoPoint,
         destination: GeoPoint,
-        policy: com.cosmicgrub.roadguard.domain.RoutePolicy
+        policy: RoutePolicy
     ): List<RouteOption> = routing.routes(origin, destination, policy).map { option ->
         if (policy.tollsAllowed || option.candidate.tollSegments > 0 || option.geometry.size < 2) {
             return@map option.copy(zeroTollVerified = false)
         }
+
         val result = try {
             evidence.verify(option.geometry)
-        } catch (cancel: kotlinx.coroutines.CancellationException) {
+        } catch (cancel: CancellationException) {
             throw cancel
         } catch (failure: Exception) {
             TollVerification.Unknown("Independent toll evidence unavailable")
         }
-        option.copy(zeroTollVerified = result is TollVerification.VerifiedZero)
+
+        if (result !is TollVerification.VerifiedZero) {
+            return@map option.copy(zeroTollVerified = false)
+        }
+
+        option.copy(
+            zeroTollVerified = true,
+            firewall = option.firewall.map { check ->
+                if (check.label == "Tolls") {
+                    FirewallCheck("Tolls", FirewallStatus.VERIFIED, "Independently verified zero tolls")
+                } else {
+                    check
+                }
+            }
+        )
     }
 }
