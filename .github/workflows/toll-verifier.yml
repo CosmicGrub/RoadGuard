@@ -1,0 +1,24 @@
+name: Toll verifier CI
+
+on:
+  pull_request:
+    paths:
+      - 'backend/toll-verifier/**'
+      - '.github/workflows/toll-verifier.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'backend/toll-verifier/**'
+      - '.github/workflows/toll-verifier.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Backend tests
+        run: node --test backend/toll-verifier/server.test.js
