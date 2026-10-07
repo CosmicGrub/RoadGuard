@@ -21,4 +21,4 @@ The service fails closed for unavailable or ambiguous evidence, HTTP failures, a
 
 **Integration blocker:** The TollGuru request and `route.hasTolls` response shape still require validation against the current official TollGuru API contract and real licensed sandbox fixtures. The implementation intentionally refuses ambiguous responses. Do not deploy or claim verified zero-toll routes until the vendor contract, route coverage, and accuracy have been independently validated.
 
-A rate limiter is provided for defense in depth, but the deployment gateway must enforce authenticated per-user quotas to protect chargeable upstream calls.
+The built-in 30-request/minute limit is a **backend-wide emergency cap** when traffic is forwarded through a loopback gateway (all requests share its source IP). It is **not** a per-user limit. Production operators must configure an appropriate capacity and enforce authenticated per-user quotas at the trusted gateway to protect chargeable upstream calls. The upstream URL must be HTTPS and redirects are refused.
