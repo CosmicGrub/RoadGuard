@@ -52,3 +52,33 @@ test('HTTP boundary does not expose vendor key', async () => {
     server.close();
   }
 });
+
+test('unsafe upstream URL never forwards credentials', async () => {
+  let calls = 0;
+  const handler = createHandler({
+    apiKey: 'secret',
+    vendorUrl: 'http://vendor.example/verify',
+    fetchImpl: async () => { calls++; throw new Error('must not call'); }
+  });
+  const server = http.createServer(handler);
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/v1/tolls/verify`, {
+      method: 'POST', body: JSON.stringify({ geometry: [[31, -97], [32, -98]] })
+    });
+    assert.equal(response.status, 503);
+    assert.equal(calls, 0);
+  } finally { server.close(); }
+});
+
+test('malformed and null JSON produce client errors', async () => {
+  const handler = createHandler({ apiKey: 'secret', vendorUrl: 'https://vendor.example/verify' });
+  const server = http.createServer(handler);
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  try {
+    for (const body of ['{bad', 'null', '']) {
+      const response = await fetch(`http://127.0.0.1:${server.address().port}/v1/tolls/verify`, { method: 'POST', body });
+      assert.equal(response.status, 400);
+    }
+  } finally { server.close(); }
+});
