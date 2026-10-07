@@ -1,6 +1,7 @@
 'use strict';
 
 const http = require('node:http');
+const { createHmac, timingSafeEqual } = require('node:crypto');
 
 const MAX_BYTES = 100_000;
 const MAX_POINTS = 5_000;
@@ -44,8 +45,10 @@ function interpretVendorResponse(payload) {
     : { status: 'verified_zero' };
 }
 
-function createHandler({ apiKey, fetchImpl = fetch, vendorUrl, maxRequestsPerMinute = 30 }) {
+function createHandler({ apiKey, fetchImpl = fetch, vendorUrl, gatewaySecret, maxRequestsPerMinute = 30, maxPerSubjectPerMinute = 10 }) {
   const counters = new Map();
+  const subjectCounters = new Map();
+  const usedNonces = new Map();
   const upstream = (() => { try { const u = new URL(vendorUrl); return u.protocol === 'https:' && !u.username && !u.password; } catch { return false; } })();
   return async (req, res) => {
     const reply = (code, body) => {
@@ -54,7 +57,7 @@ function createHandler({ apiKey, fetchImpl = fetch, vendorUrl, maxRequestsPerMin
     };
     if (req.method !== 'POST' || req.url !== '/v1/tolls/verify')
       return reply(404, { status: 'unknown', reason: 'Not found' });
-    if (!apiKey || !upstream) return reply(503, { status: 'unknown', reason: 'Verifier not configured' });
+    if (!apiKey || !upstream || !gatewaySecret || Buffer.byteLength(gatewaySecret) < 32) return reply(503, { status: 'unknown', reason: 'Verifier not configured' });
 
     // Per-address limiter is a defense-in-depth guard, not a substitute for
     // authentication and quota enforcement at the deployment gateway.
@@ -78,6 +81,34 @@ function createHandler({ apiKey, fetchImpl = fetch, vendorUrl, maxRequestsPerMin
       let body;
       try { body = JSON.parse(raw); } catch { return reply(400, { status: 'unknown', reason: 'Invalid JSON' }); }
       if (!body || typeof body !== 'object' || Array.isArray(body)) return reply(400, { status: 'unknown', reason: 'Invalid JSON object' });
+      // Authenticated gateway signs the exact request body and subject, with a
+      // short-lived timestamp and unique nonce. Untrusted identity headers alone
+      // are never sufficient for authentication or quota attribution.
+      const subject = req.headers['x-roadguard-subject'];
+      const timestamp = req.headers['x-roadguard-timestamp'];
+      const nonce = req.headers['x-roadguard-nonce'];
+      const signature = req.headers['x-roadguard-signature'];
+      if ([subject, timestamp, nonce, signature].some(v => typeof v !== 'string') ||
+          !/^[A-Za-z0-9_-]{1,128}$/.test(subject) ||
+          !/^\\d{13}$/.test(timestamp) ||
+          !/^[a-f0-9]{32}$/.test(nonce) ||
+          !/^[a-f0-9]{64}$/.test(signature) ||
+          Math.abs(Date.now() - Number(timestamp)) > 60_000)
+        return reply(401, { status: 'unknown', reason: 'Gateway authentication required' });
+      const expected = createHmac('sha256', gatewaySecret)
+        .update(['POST', '/v1/tolls/verify', subject, timestamp, nonce, raw].join('\\n')).digest();
+      if (!timingSafeEqual(expected, Buffer.from(signature, 'hex')))
+        return reply(401, { status: 'unknown', reason: 'Invalid gateway signature' });
+      const replayKey = subject + ':' + nonce;
+      const current = Date.now();
+      for (const [key, expires] of usedNonces) if (expires <= current) usedNonces.delete(key);
+      if (usedNonces.has(replayKey)) return reply(401, { status: 'unknown', reason: 'Replayed request' });
+      usedNonces.set(replayKey, current + 120_000);
+      for (const [key, bucket] of subjectCounters) if (bucket.expires <= current) subjectCounters.delete(key);
+      const quota = subjectCounters.get(subject) || { count: 0, expires: current + 60_000 };
+      quota.count++;
+      subjectCounters.set(subject, quota);
+      if (quota.count > maxPerSubjectPerMinute) return reply(429, { status: 'unknown', reason: 'Subject quota exceeded' });
       const geometry = body.geometry;
       if (!validGeometry(geometry)) return reply(400, { status: 'unknown', reason: 'Invalid route geometry' });
       const response = await fetchImpl(vendorUrl, {
@@ -104,8 +135,9 @@ if (require.main === module) {
   const key = process.env.TOLLGURU_API_KEY;
   const vendorUrl = process.env.TOLLGURU_ENDPOINT ||
     'https://apis.tollguru.com/toll/v2/complete-polyline-from-mapping-service';
+  const gatewaySecret = process.env.ROADGUARD_GATEWAY_SECRET;
   const port = Number(process.env.PORT || 8080);
-  const server = http.createServer(createHandler({ apiKey: key, vendorUrl }));
+  const server = http.createServer(createHandler({ apiKey: key, vendorUrl, gatewaySecret }));
   server.listen(port, '127.0.0.1', () => console.log('RoadGuard verifier listening on loopback', port));
 }
 
