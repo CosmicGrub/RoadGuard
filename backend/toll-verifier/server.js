@@ -46,6 +46,7 @@ function interpretVendorResponse(payload) {
 
 function createHandler({ apiKey, fetchImpl = fetch, vendorUrl, maxRequestsPerMinute = 30 }) {
   const counters = new Map();
+  const upstream = (() => { try { const u = new URL(vendorUrl); return u.protocol === 'https:' && !u.username && !u.password; } catch { return false; } })();
   return async (req, res) => {
     const reply = (code, body) => {
       res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' });
@@ -53,12 +54,14 @@ function createHandler({ apiKey, fetchImpl = fetch, vendorUrl, maxRequestsPerMin
     };
     if (req.method !== 'POST' || req.url !== '/v1/tolls/verify')
       return reply(404, { status: 'unknown', reason: 'Not found' });
-    if (!apiKey || !vendorUrl) return reply(503, { status: 'unknown', reason: 'Verifier not configured' });
+    if (!apiKey || !upstream) return reply(503, { status: 'unknown', reason: 'Verifier not configured' });
 
     // Per-address limiter is a defense-in-depth guard, not a substitute for
     // authentication and quota enforcement at the deployment gateway.
     const now = Date.now();
     const ip = req.socket.remoteAddress || 'unknown';
+    // This is a backend-wide safety cap behind a local gateway; authenticated
+    // per-subject limits and quotas belong at that trusted gateway.
     for (const [key, bucket] of counters) if (bucket.expires <= now) counters.delete(key);
     const bucket = counters.get(ip) || { count: 0, expires: now + 60_000 };
     bucket.count++;
@@ -72,7 +75,10 @@ function createHandler({ apiKey, fetchImpl = fetch, vendorUrl, maxRequestsPerMin
         raw += chunk;
         if (Buffer.byteLength(raw) > MAX_BYTES) return reply(413, { status: 'unknown', reason: 'Payload too large' });
       }
-      const geometry = JSON.parse(raw).geometry;
+      let body;
+      try { body = JSON.parse(raw); } catch { return reply(400, { status: 'unknown', reason: 'Invalid JSON' }); }
+      if (!body || typeof body !== 'object' || Array.isArray(body)) return reply(400, { status: 'unknown', reason: 'Invalid JSON object' });
+      const geometry = body.geometry;
       if (!validGeometry(geometry)) return reply(400, { status: 'unknown', reason: 'Invalid route geometry' });
       const response = await fetchImpl(vendorUrl, {
         method: 'POST',
@@ -82,6 +88,7 @@ function createHandler({ apiKey, fetchImpl = fetch, vendorUrl, maxRequestsPerMin
           polyline: encodePolyline(geometry),
           vehicle: { type: '2AxlesAuto' }
         }),
+        redirect: 'error',
         signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS)
       });
       if (!response.ok) return reply(502, { status: 'unknown', reason: 'Independent provider unavailable' });
