@@ -5,7 +5,10 @@ import com.cosmicgrub.roadguard.domain.FirewallStatus
 import com.cosmicgrub.roadguard.domain.RouteCandidate
 import com.cosmicgrub.roadguard.domain.RoutePolicy
 import com.cosmicgrub.roadguard.navigation.RouteOption
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.*
 import org.junit.Test
 

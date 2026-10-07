@@ -13,6 +13,9 @@ val localProperties = Properties().apply {
 val hereApiKey = providers.environmentVariable("HERE_API_KEY").orNull
     ?: localProperties.getProperty("HERE_API_KEY")
     ?: ""
+val tollVerificationEndpoint = providers.environmentVariable("TOLL_VERIFICATION_ENDPOINT").orNull
+    ?: localProperties.getProperty("TOLL_VERIFICATION_ENDPOINT")
+    ?: ""
 
 android {
     namespace = "com.cosmicgrub.roadguard"
@@ -26,6 +29,7 @@ android {
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "HERE_API_KEY", "\"${hereApiKey.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
+        buildConfigField("String", "TOLL_VERIFICATION_ENDPOINT", "\"${tollVerificationEndpoint.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
     }
 
     compileOptions {

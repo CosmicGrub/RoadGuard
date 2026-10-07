@@ -40,7 +40,7 @@ private fun RoadGuardHome() {
     var locationAccess by remember { mutableStateOf(context.locationAccess()) }
     val provider = remember { RoadGuardProviderFactory.here(BuildConfig.HERE_API_KEY) }
     val navViewModel: NavigationViewModel? = remember(provider) {
-        provider?.let { NavigationViewModel(NavigationRuntime(it).controller) }
+        provider?.let { NavigationViewModel(NavigationRuntime(it, BuildConfig.TOLL_VERIFICATION_ENDPOINT).controller) }
     }
     val navState = navViewModel?.state?.collectAsState()?.value
     val driverLocation = rememberDriverLocation(locationAccess != LocationAccess.NONE)
