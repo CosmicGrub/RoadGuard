@@ -3,6 +3,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
+const { createHmac, randomBytes } = require('node:crypto');
+const secret = '0123456789abcdef0123456789abcdef';
+function signed(body) {
+ const timestamp=String(Date.now()),nonce=randomBytes(16).toString('hex'),subject='tester';
+ const signature=createHmac('sha256',secret).update(['POST','/v1/tolls/verify',subject,timestamp,nonce,body].join('\n')).digest('hex');
+ return {'x-roadguard-subject':subject,'x-roadguard-timestamp':timestamp,'x-roadguard-nonce':nonce,'x-roadguard-signature':signature};
+}
 const { encodePolyline, validGeometry, interpretVendorResponse, createHandler } = require('./server');
 
 test('Google polyline example', () => {
@@ -28,7 +35,7 @@ test('only explicit boolean evidence can verify zero tolls', () => {
 test('HTTP boundary does not expose vendor key', async () => {
   let calls = 0;
   const handler = createHandler({
-    apiKey: 'secret-test-key',
+    apiKey: 'secret-test-key', gatewaySecret: secret,
     vendorUrl: 'https://vendor.example/verify',
     fetchImpl: async (url, init) => {
       calls++;
@@ -40,7 +47,7 @@ test('HTTP boundary does not expose vendor key', async () => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   try {
     const response = await fetch(`http://127.0.0.1:${server.address().port}/v1/tolls/verify`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
+      method: 'POST', headers: { 'content-type': 'application/json', ...signed(JSON.stringify({ geometry: [[31, -97], [31.1, -97.1]] })) },
       body: JSON.stringify({ geometry: [[31, -97], [31.1, -97.1]] })
     });
     const text = await response.text();
@@ -56,7 +63,7 @@ test('HTTP boundary does not expose vendor key', async () => {
 test('unsafe upstream URL never forwards credentials', async () => {
   let calls = 0;
   const handler = createHandler({
-    apiKey: 'secret',
+    apiKey: 'secret', gatewaySecret: secret,
     vendorUrl: 'http://vendor.example/verify',
     fetchImpl: async () => { calls++; throw new Error('must not call'); }
   });
@@ -72,7 +79,7 @@ test('unsafe upstream URL never forwards credentials', async () => {
 });
 
 test('malformed and null JSON produce client errors', async () => {
-  const handler = createHandler({ apiKey: 'secret', vendorUrl: 'https://vendor.example/verify' });
+  const handler = createHandler({ apiKey: 'secret', gatewaySecret: secret, vendorUrl: 'https://vendor.example/verify' });
   const server = http.createServer(handler);
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   try {
