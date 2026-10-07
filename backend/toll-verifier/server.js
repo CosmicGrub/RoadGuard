@@ -90,13 +90,13 @@ function createHandler({ apiKey, fetchImpl = fetch, vendorUrl, gatewaySecret, ma
       const signature = req.headers['x-roadguard-signature'];
       if ([subject, timestamp, nonce, signature].some(v => typeof v !== 'string') ||
           !/^[A-Za-z0-9_-]{1,128}$/.test(subject) ||
-          !/^\\d{13}$/.test(timestamp) ||
+          !/^\d{13}$/.test(timestamp) ||
           !/^[a-f0-9]{32}$/.test(nonce) ||
           !/^[a-f0-9]{64}$/.test(signature) ||
           Math.abs(Date.now() - Number(timestamp)) > 60_000)
         return reply(401, { status: 'unknown', reason: 'Gateway authentication required' });
       const expected = createHmac('sha256', gatewaySecret)
-        .update(['POST', '/v1/tolls/verify', subject, timestamp, nonce, raw].join('\\n')).digest();
+        .update(['POST', '/v1/tolls/verify', subject, timestamp, nonce, raw].join('\n')).digest();
       if (!timingSafeEqual(expected, Buffer.from(signature, 'hex')))
         return reply(401, { status: 'unknown', reason: 'Invalid gateway signature' });
       const replayKey = subject + ':' + nonce;
