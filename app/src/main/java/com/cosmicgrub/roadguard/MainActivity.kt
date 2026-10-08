@@ -39,8 +39,12 @@ private fun RoadGuardHome() {
     val context = LocalContext.current
     var locationAccess by remember { mutableStateOf(context.locationAccess()) }
     val provider = remember { RoadGuardProviderFactory.here(BuildConfig.HERE_API_KEY) }
+    // The gateway credential is provisioned at runtime, never in BuildConfig or APK resources.
+    val gatewayTokenProvider: suspend () -> String? = {
+        null // Await authenticated identity provider; never trust an unprovisioned local token
+    }
     val navViewModel: NavigationViewModel? = remember(provider) {
-        provider?.let { NavigationViewModel(NavigationRuntime(it, BuildConfig.TOLL_VERIFICATION_ENDPOINT).controller) }
+        provider?.let { NavigationViewModel(NavigationRuntime(it, BuildConfig.TOLL_VERIFICATION_ENDPOINT, gatewayTokenProvider).controller) }
     }
     val navState = navViewModel?.state?.collectAsState()?.value
     val driverLocation = rememberDriverLocation(locationAccess != LocationAccess.NONE)

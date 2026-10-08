@@ -8,7 +8,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 data class RoadGuardTollVerifierConfig(
-    val endpoint: String
+    val endpoint: String,
+    val accessTokenProvider: suspend () -> String? = { null }
 ) {
     init {
         require(endpoint.startsWith("https://")) { "Toll verification endpoint must use HTTPS" }
@@ -21,7 +22,7 @@ class RoadGuardBackendTollEvidence(
 ) : IndependentTollEvidence {
     override suspend fun verify(geometry: List<GeoPoint>): TollVerification {
         if (geometry.size < 2) return TollVerification.Unknown("Route geometry is incomplete")
-        return parse(http.verify(config.endpoint, geometry))
+        return parse(http.verify(config.endpoint, geometry, config.accessTokenProvider()))
     }
 
     internal fun parse(json: String): TollVerification {
@@ -39,7 +40,7 @@ class RoadGuardBackendTollEvidence(
 }
 
 open class RoadGuardBackendTollClient {
-    open suspend fun verify(endpoint: String, geometry: List<GeoPoint>): String =
+    open suspend fun verify(endpoint: String, geometry: List<GeoPoint>, accessToken: String? = null): String =
         withContext(Dispatchers.IO) {
             val connection = URL(endpoint).openConnection() as HttpURLConnection
             try {
@@ -49,6 +50,10 @@ open class RoadGuardBackendTollClient {
                 connection.doOutput = true
                 connection.setRequestProperty("Accept", "application/json")
                 connection.setRequestProperty("Content-Type", "application/json")
+                if (!accessToken.isNullOrBlank()) {
+                    require(!accessToken.contains("\\r") && !accessToken.contains("\\n")) { "Invalid authentication token" }
+                    connection.setRequestProperty("Authorization", "Bearer $accessToken")
+                }
 
                 val points = JSONArray()
                 geometry.forEach { point ->
