@@ -1,7 +1,6 @@
 package com.cosmicgrub.roadguard
 
 import android.os.Bundle
-import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -42,8 +41,7 @@ private fun RoadGuardHome() {
     val provider = remember { RoadGuardProviderFactory.here(BuildConfig.HERE_API_KEY) }
     // The gateway credential is provisioned at runtime, never in BuildConfig or APK resources.
     val gatewayTokenProvider: suspend () -> String? = {
-        context.getSharedPreferences("roadguard_gateway_auth", Context.MODE_PRIVATE)
-            .getString("access_token", null)
+        null // Await authenticated identity provider; never trust an unprovisioned local token
     }
     val navViewModel: NavigationViewModel? = remember(provider) {
         provider?.let { NavigationViewModel(NavigationRuntime(it, BuildConfig.TOLL_VERIFICATION_ENDPOINT, gatewayTokenProvider).controller) }
