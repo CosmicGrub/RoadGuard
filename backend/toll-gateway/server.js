@@ -4,7 +4,6 @@ const http = require('node:http');
 const { createHmac, randomBytes, timingSafeEqual } = require('node:crypto');
 
 const MAX_BYTES = 100_000;
-const CLOCK_SKEW_MS = 60_000;
 
 function constantTimeTokenMatch(actual, expected) {
   if (typeof actual !== 'string' || typeof expected !== 'string') return false;
@@ -19,7 +18,7 @@ function createGatewayHandler({
   const quotas = new Map();
   const configured = typeof clientToken === 'string' && Buffer.byteLength(clientToken) >= 32 &&
     typeof gatewaySecret === 'string' && Buffer.byteLength(gatewaySecret) >= 32 &&
-    (() => { try { const u = new URL(verifierUrl); return u.protocol === 'http:' && ['127.0.0.1','localhost','::1'].includes(u.hostname); } catch { return false; } })();
+    (() => { try { const u = new URL(verifierUrl); return u.protocol === 'http:' && ['127.0.0.1','[::1]'].includes(u.hostname) && !u.username && !u.password && u.pathname === '/v1/tolls/verify' && !u.search && !u.hash; } catch { return false; } })();
 
   return async (req, res) => {
     const reply = (code, body) => {
@@ -31,7 +30,7 @@ function createGatewayHandler({
     if (!configured) return reply(503, {status:'unknown', reason:'Gateway not configured'});
 
     const auth = req.headers.authorization;
-    if (typeof auth !== 'string' || !auth.startsWith('Bearer ') ||
+    if (typeof auth !== 'string' || !/^Bearer [^\s]+$/i.test(auth) ||
         !constantTimeTokenMatch(auth.slice(7), clientToken))
       return reply(401, {status:'unknown', reason:'Authentication required'});
 
@@ -45,13 +44,16 @@ function createGatewayHandler({
     if (quota.count > maxPerClientPerMinute)
       return reply(429, {status:'unknown', reason:'Client quota exceeded'});
 
-    let raw = '';
+    const chunks = [];
+    let size = 0;
     try {
       for await (const chunk of req) {
-        raw += chunk;
-        if (Buffer.byteLength(raw) > MAX_BYTES)
+        size += chunk.length;
+        if (size > MAX_BYTES)
           return reply(413, {status:'unknown', reason:'Payload too large'});
+        chunks.push(chunk);
       }
+      const raw = Buffer.concat(chunks).toString('utf8');
       let parsed;
       try { parsed = JSON.parse(raw); } catch { return reply(400, {status:'unknown', reason:'Invalid JSON'}); }
       if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.geometry))
