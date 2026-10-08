@@ -10,13 +10,14 @@ import com.cosmicgrub.roadguard.domain.RoutePolicy
 class NavigationRuntime(
     provider: ExternalNavigationAdapter,
     tollVerificationEndpoint: String? = null,
+    tollAccessTokenProvider: suspend () -> String? = { null },
     policy: RoutePolicy = RoutePolicy()
 ) {
     private val routing: NavigationRouteProvider =
         if (tollVerificationEndpoint.isNullOrBlank()) provider
         else IndependentTollRouteProvider(
             provider,
-            RoadGuardBackendTollEvidence(RoadGuardTollVerifierConfig(tollVerificationEndpoint))
+            RoadGuardBackendTollEvidence(RoadGuardTollVerifierConfig(tollVerificationEndpoint, tollAccessTokenProvider))
         )
 
     val controller = NavigationController(
