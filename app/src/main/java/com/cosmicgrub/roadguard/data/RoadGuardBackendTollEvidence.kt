@@ -22,7 +22,9 @@ class RoadGuardBackendTollEvidence(
 ) : IndependentTollEvidence {
     override suspend fun verify(geometry: List<GeoPoint>): TollVerification {
         if (geometry.size < 2) return TollVerification.Unknown("Route geometry is incomplete")
-        return parse(http.verify(config.endpoint, geometry, config.accessTokenProvider()))
+        val token = config.accessTokenProvider()?.takeIf { it.isNotBlank() }
+            ?: return TollVerification.Unknown("Authenticated toll verification is unavailable")
+        return parse(http.verify(config.endpoint, geometry, token))
     }
 
     internal fun parse(json: String): TollVerification {
