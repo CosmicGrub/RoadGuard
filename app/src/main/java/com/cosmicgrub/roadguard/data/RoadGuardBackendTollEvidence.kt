@@ -46,6 +46,7 @@ open class RoadGuardBackendTollClient {
         withContext(Dispatchers.IO) {
             val connection = URL(endpoint).openConnection() as HttpURLConnection
             try {
+                connection.instanceFollowRedirects = false
                 connection.requestMethod = "POST"
                 connection.connectTimeout = 7_500
                 connection.readTimeout = 12_500
@@ -53,7 +54,7 @@ open class RoadGuardBackendTollClient {
                 connection.setRequestProperty("Accept", "application/json")
                 connection.setRequestProperty("Content-Type", "application/json")
                 if (!accessToken.isNullOrBlank()) {
-                    require(!accessToken.contains("\\r") && !accessToken.contains("\\n")) { "Invalid authentication token" }
+                    require(!accessToken.contains('\r') && !accessToken.contains('\n')) { "Invalid authentication token" }
                     connection.setRequestProperty("Authorization", "Bearer $accessToken")
                 }
 
