@@ -6,7 +6,7 @@ function b64json(part) {
 }
 
 function createOidcValidator({issuer,audience,fetchImpl=fetch,clock=()=>Date.now()}) {
-  if (!/^https:\/\//.test(issuer) || !audience) throw new Error('OIDC issuer and audience required');
+  if (typeof issuer !== 'string' || typeof audience !== 'string' || !audience || !/^https:\/\//.test(issuer)) throw new Error('OIDC issuer and audience required');
   const base=issuer.replace(/\/$/,'');
   let cache=null;
   return async function validate(token) {
@@ -15,8 +15,10 @@ function createOidcValidator({issuer,audience,fetchImpl=fetch,clock=()=>Date.now
     if(parts.length!==3) return null;
     let header,payload;
     try {header=b64json(parts[0]);payload=b64json(parts[1]);}catch{return null;}
+    if(!header || !payload || typeof header!=='object' || typeof payload!=='object') return null;
     if(header.alg!=='RS256' || typeof header.kid!=='string' || !header.kid || header.kid.length>256) return null;
     const now=Math.floor(clock()/1000);
+    if(payload.exp!==undefined && payload.iat!==undefined && payload.exp-payload.iat>3600) return null;
     if(payload.iss!==base || !(payload.aud===audience || (Array.isArray(payload.aud)&&payload.aud.includes(audience))) ||
        !Number.isInteger(payload.exp) || payload.exp<=now ||
        !Number.isInteger(payload.iat) || payload.iat>now+60 ||
