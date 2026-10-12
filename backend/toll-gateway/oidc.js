@@ -22,17 +22,19 @@ function createOidcValidator({issuer,audience,fetchImpl=fetch,clock=()=>Date.now
        !Number.isInteger(payload.iat) || payload.iat>now+60 ||
        typeof payload.sub!=='string' || !/^[A-Za-z0-9_-]{1,128}$/.test(payload.sub)) return null;
     if(Array.isArray(payload.aud)&&payload.aud.length>1&&payload.azp!==audience) return null;
+    if(payload.nbf!==undefined&&(!Number.isInteger(payload.nbf)||payload.nbf>now+60)) return null;
     if(!cache || cache.expires<=clock() || !cache.keys.some(k=>k.kid===header.kid)){
       const configUrl=base+'/.well-known/openid-configuration';
       const conf=await fetchImpl(configUrl,{redirect:'error',signal:AbortSignal.timeout(5000)});
       if(!conf.ok) return null;
       const discovery=await conf.json();
+      if(discovery.issuer!==base || typeof discovery.jwks_uri!=='string') return null;
       const jwksUrl=new URL(discovery.jwks_uri);
-      if(jwksUrl.protocol!=='https:' || jwksUrl.origin!==new URL(base).origin) return null;
+      if(jwksUrl.protocol!=='https:' || jwksUrl.origin!==new URL(base).origin || jwksUrl.username || jwksUrl.password) return null;
       const response=await fetchImpl(jwksUrl.href,{redirect:'error',signal:AbortSignal.timeout(5000)});
       if(!response.ok) return null;
       const keys=(await response.json()).keys;
-      if(!Array.isArray(keys)) return null;
+      if(!Array.isArray(keys) || keys.length>100) return null;
       cache={keys,expires:clock()+300000};
     }
     const jwk=cache.keys.find(k=>k.kid===header.kid&&k.kty==='RSA'&&k.alg==='RS256'&&k.use==='sig');
