@@ -87,12 +87,17 @@ function createGatewayHandler({
 if (require.main === module) {
   const port=Number(process.env.GATEWAY_PORT||8443);
   const verifierUrl=process.env.ROADGUARD_VERIFIER_URL||'http://127.0.0.1:8080/v1/tolls/verify';
+  const oidcIssuer=process.env.ROADGUARD_OIDC_ISSUER;
+  const oidcAudience=process.env.ROADGUARD_OIDC_AUDIENCE;
+  if (Boolean(oidcIssuer)!==Boolean(oidcAudience)) {
+    throw new Error('Incomplete OIDC configuration: issuer and audience must both be set');
+  }
   http.createServer(createGatewayHandler({
     clientToken:process.env.ROADGUARD_CLIENT_TOKEN,
     gatewaySecret:process.env.ROADGUARD_GATEWAY_SECRET,
     verifierUrl,
-    authenticate: process.env.ROADGUARD_OIDC_ISSUER && process.env.ROADGUARD_OIDC_AUDIENCE
-      ? createOidcValidator({issuer:process.env.ROADGUARD_OIDC_ISSUER,audience:process.env.ROADGUARD_OIDC_AUDIENCE}) : null
+    authenticate: oidcIssuer && oidcAudience
+      ? createOidcValidator({issuer:oidcIssuer,audience:oidcAudience}) : null
   })).listen(port,'127.0.0.1',()=>console.log('RoadGuard gateway listening on loopback',port));
 }
 
