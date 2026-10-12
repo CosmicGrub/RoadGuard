@@ -79,3 +79,31 @@ test('IPv6 loopback is accepted but external and credentialed URLs are rejected'
     try{const res=await fetch('http://127.0.0.1:'+server.address().port+'/v1/tolls/verify',{method:'POST',headers:{authorization:'Bearer '+token},body:JSON.stringify({geometry:[[31,-97],[32,-98]]})});assert.equal(res.status,expected);}finally{server.close();}
   }
 });
+
+test('OIDC subjects are independently authenticated and quota-isolated',async()=>{
+  const body=JSON.stringify({geometry:[[31,-97],[32,-98]]});
+  const seen=[];
+  const handler=createGatewayHandler({
+    gatewaySecret:secret,verifierUrl:'http://127.0.0.1:8080/v1/tolls/verify',
+    maxPerClientPerMinute:1,
+    authenticate:async credential=>credential==='valid-a'?'driver_a':credential==='valid-b'?'driver_b':null,
+    fetchImpl:async(_url,init)=>{
+      seen.push(init.headers['x-roadguard-subject']);
+      const h=init.headers;
+      const expected=createHmac('sha256',secret).update(['POST','/v1/tolls/verify',h['x-roadguard-subject'],h['x-roadguard-timestamp'],h['x-roadguard-nonce'],body].join('\n')).digest('hex');
+      assert.equal(h['x-roadguard-signature'],expected);
+      return {status:200,text:async()=>JSON.stringify({status:'verified_zero'})};
+    }
+  });
+  const server=http.createServer(handler);
+  await new Promise(r=>server.listen(0,'127.0.0.1',r));
+  try{
+    const url='http://127.0.0.1:'+server.address().port+'/v1/tolls/verify';
+    const send=async tokenValue=>(await fetch(url,{method:'POST',headers:{authorization:'Bearer '+tokenValue},body})).status;
+    assert.equal(await send('invalid'),401);
+    assert.equal(await send('valid-a'),200);
+    assert.equal(await send('valid-a'),429);
+    assert.equal(await send('valid-b'),200);
+    assert.deepEqual(seen,['driver_a','driver_b']);
+  }finally{server.close();}
+});
