@@ -23,6 +23,7 @@ function createOidcValidator({issuer,audience,fetchImpl=fetch,clock=()=>Date.now
        !Number.isInteger(payload.exp) || payload.exp<=now ||
        !Number.isInteger(payload.iat) || payload.iat>now+60 ||
        typeof payload.sub!=='string' || !/^[A-Za-z0-9_-]{1,128}$/.test(payload.sub)) return null;
+    if(payload.azp!==undefined && payload.azp!==audience) return null;
     if(Array.isArray(payload.aud)&&payload.aud.length>1&&payload.azp!==audience) return null;
     if(payload.nbf!==undefined&&(!Number.isInteger(payload.nbf)||payload.nbf>now+60)) return null;
     if(!cache || cache.expires<=clock() || !cache.keys.some(k=>k.kid===header.kid)){
@@ -39,7 +40,7 @@ function createOidcValidator({issuer,audience,fetchImpl=fetch,clock=()=>Date.now
       if(!Array.isArray(keys) || keys.length>100) return null;
       cache={keys,expires:clock()+300000};
     }
-    const jwk=cache.keys.find(k=>k.kid===header.kid&&k.kty==='RSA'&&k.alg==='RS256'&&k.use==='sig');
+    const jwk=cache.keys.find(k=>k.kid===header.kid&&k.kty==='RSA'&&(k.alg===undefined||k.alg==='RS256')&&(k.use===undefined||k.use==='sig'));
     if(!jwk) return null;
     try {
       const key=createPublicKey({key:jwk,format:'jwk'});
