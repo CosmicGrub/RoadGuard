@@ -2,6 +2,7 @@
 
 const http = require('node:http');
 const { createHmac, randomBytes, timingSafeEqual } = require('node:crypto');
+const { createOidcValidator } = require('./oidc');
 
 const MAX_BYTES = 100_000;
 
@@ -13,10 +14,10 @@ function constantTimeTokenMatch(actual, expected) {
 
 function createGatewayHandler({
   clientToken, gatewaySecret, verifierUrl, fetchImpl = fetch,
-  maxPerClientPerMinute = 10
+  maxPerClientPerMinute = 10, authenticate = null
 }) {
   const quotas = new Map();
-  const configured = typeof clientToken === 'string' && Buffer.byteLength(clientToken) >= 32 &&
+  const configured = (typeof authenticate === 'function' || (typeof clientToken === 'string' && Buffer.byteLength(clientToken) >= 32)) &&
     typeof gatewaySecret === 'string' && Buffer.byteLength(gatewaySecret) >= 32 &&
     (() => { try { const u = new URL(verifierUrl); return u.protocol === 'http:' && ['127.0.0.1','[::1]'].includes(u.hostname) && !u.username && !u.password && u.pathname === '/v1/tolls/verify' && !u.search && !u.hash; } catch { return false; } })();
 
@@ -30,13 +31,17 @@ function createGatewayHandler({
     if (!configured) return reply(503, {status:'unknown', reason:'Gateway not configured'});
 
     const auth = req.headers.authorization;
-    if (typeof auth !== 'string' || !/^Bearer [^\s]+$/i.test(auth) ||
-        !constantTimeTokenMatch(auth.slice(7), clientToken))
-      return reply(401, {status:'unknown', reason:'Authentication required'});
-
-    // M6 bootstrap identity: a deployment-issued token maps to one stable subject.
-    // Replace this single-client bootstrap with OIDC/JWT validation before multi-user release.
-    const subject = 'bootstrap-client';
+    const bearer = typeof auth === 'string' && /^Bearer [^\s]+$/i.test(auth) ? auth.slice(7) : null;
+    let subject;
+    if (authenticate) {
+      try { subject = bearer ? await authenticate(bearer) : null; } catch { subject = null; }
+      if (typeof subject !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(subject))
+        return reply(401, {status:'unknown', reason:'Authentication required'});
+    } else {
+      if (!bearer || !constantTimeTokenMatch(bearer, clientToken))
+        return reply(401, {status:'unknown', reason:'Authentication required'});
+      subject = 'bootstrap-client';
+    }
     const now = Date.now();
     for (const [k,v] of quotas) if (v.expires <= now) quotas.delete(k);
     const quota = quotas.get(subject) || {count:0, expires:now+60_000};
@@ -82,10 +87,17 @@ function createGatewayHandler({
 if (require.main === module) {
   const port=Number(process.env.GATEWAY_PORT||8443);
   const verifierUrl=process.env.ROADGUARD_VERIFIER_URL||'http://127.0.0.1:8080/v1/tolls/verify';
+  const oidcIssuer=process.env.ROADGUARD_OIDC_ISSUER;
+  const oidcAudience=process.env.ROADGUARD_OIDC_AUDIENCE;
+  if (Boolean(oidcIssuer)!==Boolean(oidcAudience)) {
+    throw new Error('Incomplete OIDC configuration: issuer and audience must both be set');
+  }
   http.createServer(createGatewayHandler({
     clientToken:process.env.ROADGUARD_CLIENT_TOKEN,
     gatewaySecret:process.env.ROADGUARD_GATEWAY_SECRET,
-    verifierUrl
+    verifierUrl,
+    authenticate: oidcIssuer && oidcAudience
+      ? createOidcValidator({issuer:oidcIssuer,audience:oidcAudience}) : null
   })).listen(port,'127.0.0.1',()=>console.log('RoadGuard gateway listening on loopback',port));
 }
 
